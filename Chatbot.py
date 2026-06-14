@@ -4,7 +4,11 @@ import io
 import ollama
 import requests
 import streamlit as st
-from streamlit_paste_button import paste_image_button
+
+try:
+    from streamlit_paste_button import paste_image_button
+except ModuleNotFoundError:
+    paste_image_button = None
 
 
 def model_likely_supports_images(provider, model):
@@ -138,20 +142,23 @@ for msg in st.session_state.messages:
         for image in msg.get("images", []):
             st.image(base64.b64decode(image["data"]))
 
-paste_result = paste_image_button(
-    label="Paste image from clipboard",
-    key="chatbot_paste_button",
-)
-if paste_result.image_data is not None:
-    image_buffer = io.BytesIO()
-    paste_result.image_data.save(image_buffer, format="PNG")
-    st.session_state["chatbot_clipboard_images"].append(
-        {
-            "mime_type": "image/png",
-            "data": base64.b64encode(image_buffer.getvalue()).decode("utf-8"),
-        }
+if paste_image_button is None:
+    st.info("Optional dependency missing: install streamlit-paste-button to use the clipboard paste button.")
+else:
+    paste_result = paste_image_button(
+        label="Paste image from clipboard",
+        key="chatbot_paste_button",
     )
-    st.success("Pasted image added to your next message.")
+    if paste_result.image_data is not None:
+        image_buffer = io.BytesIO()
+        paste_result.image_data.save(image_buffer, format="PNG")
+        st.session_state["chatbot_clipboard_images"].append(
+            {
+                "mime_type": "image/png",
+                "data": base64.b64encode(image_buffer.getvalue()).decode("utf-8"),
+            }
+        )
+        st.success("Pasted image added to your next message.")
 
 if st.session_state["chatbot_clipboard_images"]:
     st.caption(
