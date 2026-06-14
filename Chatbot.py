@@ -1,6 +1,42 @@
+import base64
+
 import ollama
 import requests
 import streamlit as st
+
+
+def build_provider_messages(provider, messages):
+    if provider == "Ollama":
+        formatted = []
+        for message in messages:
+            item = {"role": message["role"], "content": message.get("content", "")}
+            if message.get("images"):
+                item["images"] = [img["data"] for img in message["images"]]
+            formatted.append(item)
+        return formatted
+
+    formatted = []
+    for message in messages:
+        if message.get("images"):
+            content = []
+            text = message.get("content", "")
+            if text:
+                content.append({"type": "text", "text": text})
+            for image in message["images"]:
+                content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{image['mime_type']};base64,{image['data']}",
+                        },
+                    }
+                )
+            if not content:
+                content.append({"type": "text", "text": "Describe this image."})
+            formatted.append({"role": message["role"], "content": content})
+        else:
+            formatted.append({"role": message["role"], "content": message.get("content", "")})
+    return formatted
 
 
 def chat_with_remote_provider(provider, model, api_key, messages):
@@ -72,11 +108,32 @@ st.title("💬 Chatbot")
 st.caption(f"🚀 A Streamlit chatbot powered by {provider}")
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
+if "chatbot_upload_key" not in st.session_state:
+    st.session_state["chatbot_upload_key"] = 0
 
 for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
+    with st.chat_message(msg["role"]):
+        if msg.get("content"):
+            st.write(msg["content"])
+        for image in msg.get("images", []):
+            st.image(base64.b64decode(image["data"]))
 
-if prompt := st.chat_input():
+uploaded_images = st.file_uploader(
+    "Attach image(s) for your next message (upload, drag/drop, or paste)",
+    type=["png", "jpg", "jpeg", "webp", "gif"],
+    accept_multiple_files=True,
+    key=f"chatbot_images_{st.session_state['chatbot_upload_key']}",
+)
+
+if uploaded_images:
+    st.caption(f"{len(uploaded_images)} image(s) ready to send with your next message.")
+
+prompt = st.chat_input()
+if prompt is not None:
+    if not prompt and not uploaded_images:
+        st.info("Please enter a message or attach at least one image.")
+        st.stop()
+
     if not model:
         st.info("Please provide a model name to continue.")
         st.stop()
@@ -85,17 +142,38 @@ if prompt := st.chat_input():
         st.info(f"Please add your {provider} API key to continue.")
         st.stop()
 
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    st.chat_message("user").write(prompt)
+    user_message = {"role": "user", "content": prompt}
+    if uploaded_images:
+        user_message["images"] = [
+            {
+                "mime_type": image.type or "image/png",
+                "data": base64.b64encode(image.getvalue()).decode("utf-8"),
+            }
+            for image in uploaded_images
+            if image.getvalue()
+        ]
+
+    st.session_state.messages.append(user_message)
+    with st.chat_message("user"):
+        if prompt:
+            st.write(prompt)
+        for image in user_message.get("images", []):
+            st.image(base64.b64decode(image["data"]))
+
+    provider_messages = build_provider_messages(provider, st.session_state.messages)
     try:
         if provider == "Ollama":
-            response = ollama.chat(model=model, messages=st.session_state.messages)
+            response = ollama.chat(model=model, messages=provider_messages)
             msg = response["message"]["content"]
         else:
-            msg = chat_with_remote_provider(provider, model, api_key, st.session_state.messages)
+            msg = chat_with_remote_provider(provider, model, api_key, provider_messages)
     except Exception as exc:
         st.error(f"Request failed: {exc}")
         st.stop()
 
     st.session_state.messages.append({"role": "assistant", "content": msg})
     st.chat_message("assistant").write(msg)
+
+    if uploaded_images:
+        st.session_state["chatbot_upload_key"] += 1
+        st.rerun()
