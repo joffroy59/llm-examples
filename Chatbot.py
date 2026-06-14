@@ -108,8 +108,6 @@ st.title("💬 Chatbot")
 st.caption(f"🚀 A Streamlit chatbot powered by {provider}")
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
-if "chatbot_upload_key" not in st.session_state:
-    st.session_state["chatbot_upload_key"] = 0
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -118,18 +116,29 @@ for msg in st.session_state.messages:
         for image in msg.get("images", []):
             st.image(base64.b64decode(image["data"]))
 
-uploaded_images = st.file_uploader(
-    "Attach image(s) for your next message (upload, drag/drop, or paste)",
-    type=["png", "jpg", "jpeg", "webp", "gif"],
-    accept_multiple_files=True,
-    key=f"chatbot_images_{st.session_state['chatbot_upload_key']}",
-)
+try:
+    chat_payload = st.chat_input(
+        "Type a message, or paste/drop image(s)",
+        accept_file="multiple",
+        file_type=["png", "jpg", "jpeg", "webp", "gif"],
+    )
+except TypeError:
+    st.info("Upgrade Streamlit to enable image paste directly in chat input.")
+    chat_payload = st.chat_input("Type a message")
 
-if uploaded_images:
-    st.caption(f"{len(uploaded_images)} image(s) ready to send with your next message.")
+prompt = ""
+uploaded_images = []
+if chat_payload is not None:
+    if isinstance(chat_payload, str):
+        prompt = chat_payload
+    elif isinstance(chat_payload, dict):
+        prompt = chat_payload.get("text", "") or ""
+        uploaded_images = chat_payload.get("files", []) or []
+    else:
+        prompt = getattr(chat_payload, "text", "") or ""
+        uploaded_images = list(getattr(chat_payload, "files", []) or [])
 
-prompt = st.chat_input()
-if prompt is not None:
+if chat_payload is not None:
     if not prompt and not uploaded_images:
         st.info("Please enter a message or attach at least one image.")
         st.stop()
@@ -173,7 +182,3 @@ if prompt is not None:
 
     st.session_state.messages.append({"role": "assistant", "content": msg})
     st.chat_message("assistant").write(msg)
-
-    if uploaded_images:
-        st.session_state["chatbot_upload_key"] += 1
-        st.rerun()
