@@ -1,8 +1,10 @@
 import base64
+import io
 
 import ollama
 import requests
 import streamlit as st
+from streamlit_paste_button import paste_image_button
 
 
 def model_likely_supports_images(provider, model):
@@ -126,6 +128,8 @@ if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
 if "chatbot_upload_key" not in st.session_state:
     st.session_state["chatbot_upload_key"] = 0
+if "chatbot_clipboard_images" not in st.session_state:
+    st.session_state["chatbot_clipboard_images"] = []
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -133,6 +137,33 @@ for msg in st.session_state.messages:
             st.write(msg["content"])
         for image in msg.get("images", []):
             st.image(base64.b64decode(image["data"]))
+
+paste_result = paste_image_button(
+    label="Paste image from clipboard",
+    key="chatbot_paste_button",
+)
+if paste_result.image_data is not None:
+    image_buffer = io.BytesIO()
+    paste_result.image_data.save(image_buffer, format="PNG")
+    st.session_state["chatbot_clipboard_images"].append(
+        {
+            "mime_type": "image/png",
+            "data": base64.b64encode(image_buffer.getvalue()).decode("utf-8"),
+        }
+    )
+    st.success("Pasted image added to your next message.")
+
+if st.session_state["chatbot_clipboard_images"]:
+    st.caption(
+        f"{len(st.session_state['chatbot_clipboard_images'])} clipboard image(s) ready for your next message."
+    )
+    preview_cols = st.columns(min(3, len(st.session_state["chatbot_clipboard_images"])))
+    for idx, image in enumerate(st.session_state["chatbot_clipboard_images"]):
+        with preview_cols[idx % len(preview_cols)]:
+            st.image(base64.b64decode(image["data"]))
+    if st.button("Clear pasted images", key="chatbot_clear_clipboard_images"):
+        st.session_state["chatbot_clipboard_images"] = []
+        st.rerun()
 
 using_chat_input_files = True
 try:
@@ -169,6 +200,24 @@ if chat_payload is not None:
 
 if chat_payload is not None:
     if not prompt and not uploaded_images:
+        if not st.session_state["chatbot_clipboard_images"]:
+            st.info("Please enter a message or attach at least one image.")
+            st.stop()
+
+    message_images = []
+    if uploaded_images:
+        message_images.extend(
+            [
+                {
+                    "mime_type": image.type or "image/png",
+                    "data": base64.b64encode(image.getvalue()).decode("utf-8"),
+                }
+                for image in uploaded_images
+                if image.getvalue()
+            ]
+        )
+    message_images.extend(st.session_state["chatbot_clipboard_images"])
+    if not prompt and not message_images:
         st.info("Please enter a message or attach at least one image.")
         st.stop()
 
@@ -180,22 +229,15 @@ if chat_payload is not None:
         st.info(f"Please add your {provider} API key to continue.")
         st.stop()
 
-    if uploaded_images and not model_likely_supports_images(provider, model):
+    if message_images and not model_likely_supports_images(provider, model):
         st.error(
             f"The selected model '{model}' may not support images. Please switch to a vision-capable model and try again."
         )
         st.stop()
 
     user_message = {"role": "user", "content": prompt}
-    if uploaded_images:
-        user_message["images"] = [
-            {
-                "mime_type": image.type or "image/png",
-                "data": base64.b64encode(image.getvalue()).decode("utf-8"),
-            }
-            for image in uploaded_images
-            if image.getvalue()
-        ]
+    if message_images:
+        user_message["images"] = message_images
 
     st.session_state.messages.append(user_message)
     with st.chat_message("user"):
@@ -220,4 +262,6 @@ if chat_payload is not None:
 
     if uploaded_images and not using_chat_input_files:
         st.session_state["chatbot_upload_key"] += 1
+    st.session_state["chatbot_clipboard_images"] = []
+    if uploaded_images and not using_chat_input_files:
         st.rerun()

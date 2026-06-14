@@ -2,6 +2,7 @@ streamlit>=1.50
 langchain==0.0.350
 ollama>=0.3.0
 requests>=2.31.0
+streamlit-paste-button>=0.1.2
 duckduckgo-search
 anthropic>=0.3.0
 trubrics>=1.4.3
