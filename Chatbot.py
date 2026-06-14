@@ -11,20 +11,6 @@ except ModuleNotFoundError:
     paste_image_button = None
 
 
-def model_likely_supports_images(provider, model):
-    if not model:
-        return False
-
-    model_lower = model.lower()
-    if provider == "Ollama":
-        vision_hints = ["vision", "llava", "bakllava", "moondream", "minicpm-v", "qwen2.5-vl"]
-        return any(hint in model_lower for hint in vision_hints)
-
-    # Most modern default models for these providers are multimodal, but users can choose text-only models.
-    text_only_hints = ["gpt-3.5", "instruct", "text-"]
-    return not any(hint in model_lower for hint in text_only_hints)
-
-
 def build_provider_messages(provider, messages):
     if provider == "Ollama":
         formatted = []
@@ -100,14 +86,12 @@ with st.sidebar:
             models = []
 
         if models:
-            preferred_defaults = ["llama3.2-vision", "llava", "llava:latest", "bakllava", "moondream"]
-            default_model = next((m for m in preferred_defaults if m in models), models[0])
+            default_model = "llama3.1" if "llama3.1" in models else models[0]
             default_index = models.index(default_model)
             model = st.selectbox("Model", options=models, index=default_index, key="chatbot_model")
         else:
             st.info("No local Ollama models found. Pull one with: ollama pull llama3.1")
-            model = st.text_input("Model", value="llama3.2-vision", key="chatbot_model")
-        st.caption("For image prompts with Ollama, use a vision model (for example: llama3.2-vision or llava).")
+            model = st.text_input("Model", value="llama3.1", key="chatbot_model")
         api_key = ""
     else:
         default_model = {
@@ -234,12 +218,6 @@ if chat_payload is not None:
 
     if provider != "Ollama" and not api_key:
         st.info(f"Please add your {provider} API key to continue.")
-        st.stop()
-
-    if message_images and not model_likely_supports_images(provider, model):
-        st.error(
-            f"The selected model '{model}' may not support images. Please switch to a vision-capable model and try again."
-        )
         st.stop()
 
     user_message = {"role": "user", "content": prompt}
