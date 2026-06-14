@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 
 import ollama
@@ -118,6 +119,8 @@ if "chatbot_upload_key" not in st.session_state:
     st.session_state["chatbot_upload_key"] = 0
 if "chatbot_clipboard_images" not in st.session_state:
     st.session_state["chatbot_clipboard_images"] = []
+if "chatbot_clipboard_hashes" not in st.session_state:
+    st.session_state["chatbot_clipboard_hashes"] = set()
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -136,13 +139,17 @@ else:
     if paste_result.image_data is not None:
         image_buffer = io.BytesIO()
         paste_result.image_data.save(image_buffer, format="PNG")
-        st.session_state["chatbot_clipboard_images"].append(
-            {
-                "mime_type": "image/png",
-                "data": base64.b64encode(image_buffer.getvalue()).decode("utf-8"),
-            }
-        )
-        st.success("Pasted image added to your next message.")
+        image_bytes = image_buffer.getvalue()
+        image_hash = hashlib.sha256(image_bytes).hexdigest()
+        if image_hash not in st.session_state["chatbot_clipboard_hashes"]:
+            st.session_state["chatbot_clipboard_images"].append(
+                {
+                    "mime_type": "image/png",
+                    "data": base64.b64encode(image_bytes).decode("utf-8"),
+                }
+            )
+            st.session_state["chatbot_clipboard_hashes"].add(image_hash)
+            st.success("Pasted image added to your next message.")
 
 if st.session_state["chatbot_clipboard_images"]:
     st.caption(
@@ -154,6 +161,7 @@ if st.session_state["chatbot_clipboard_images"]:
             st.image(base64.b64decode(image["data"]))
     if st.button("Clear pasted images", key="chatbot_clear_clipboard_images"):
         st.session_state["chatbot_clipboard_images"] = []
+        st.session_state["chatbot_clipboard_hashes"] = set()
         st.rerun()
 
 using_chat_input_files = True
@@ -248,5 +256,6 @@ if chat_payload is not None:
     if uploaded_images and not using_chat_input_files:
         st.session_state["chatbot_upload_key"] += 1
     st.session_state["chatbot_clipboard_images"] = []
+    st.session_state["chatbot_clipboard_hashes"] = set()
     if uploaded_images and not using_chat_input_files:
         st.rerun()
