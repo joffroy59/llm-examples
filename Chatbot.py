@@ -108,6 +108,8 @@ st.title("💬 Chatbot")
 st.caption(f"🚀 A Streamlit chatbot powered by {provider}")
 if "messages" not in st.session_state:
     st.session_state["messages"] = [{"role": "assistant", "content": "How can I help you?"}]
+if "chatbot_upload_key" not in st.session_state:
+    st.session_state["chatbot_upload_key"] = 0
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
@@ -116,6 +118,7 @@ for msg in st.session_state.messages:
         for image in msg.get("images", []):
             st.image(base64.b64decode(image["data"]))
 
+using_chat_input_files = True
 try:
     chat_payload = st.chat_input(
         "Type a message, or paste/drop image(s)",
@@ -123,11 +126,21 @@ try:
         file_type=["png", "jpg", "jpeg", "webp", "gif"],
     )
 except TypeError:
-    st.info("Upgrade Streamlit to enable image paste directly in chat input.")
+    using_chat_input_files = False
+    st.info("Your Streamlit version does not support image paste in chat input. Use the uploader below or upgrade Streamlit.")
+    uploaded_images = st.file_uploader(
+        "Attach image(s) for your next message",
+        type=["png", "jpg", "jpeg", "webp", "gif"],
+        accept_multiple_files=True,
+        key=f"chatbot_images_{st.session_state['chatbot_upload_key']}",
+    )
+    if uploaded_images:
+        st.caption(f"{len(uploaded_images)} image(s) ready to send.")
     chat_payload = st.chat_input("Type a message")
 
 prompt = ""
-uploaded_images = []
+if using_chat_input_files:
+    uploaded_images = []
 if chat_payload is not None:
     if isinstance(chat_payload, str):
         prompt = chat_payload
@@ -182,3 +195,7 @@ if chat_payload is not None:
 
     st.session_state.messages.append({"role": "assistant", "content": msg})
     st.chat_message("assistant").write(msg)
+
+    if uploaded_images and not using_chat_input_files:
+        st.session_state["chatbot_upload_key"] += 1
+        st.rerun()
