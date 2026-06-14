@@ -2,7 +2,19 @@ import ollama
 import streamlit as st
 
 with st.sidebar:
-    ollama_model = st.text_input("Ollama model", value="llama3.1", key="chatbot_model")
+    models = []
+    try:
+        models = [m["model"] for m in ollama.list().get("models", []) if m.get("model")]
+    except Exception:
+        models = []
+
+    if models:
+        default_model = "llama3.1" if "llama3.1" in models else models[0]
+        default_index = models.index(default_model)
+        ollama_model = st.selectbox("Ollama model", options=models, index=default_index, key="chatbot_model")
+    else:
+        st.info("No local Ollama models found. Pull one with: ollama pull llama3.1")
+        ollama_model = st.text_input("Ollama model", value="llama3.1", key="chatbot_model")
     "[Install Ollama](https://ollama.com/download)"
     "[Pull a model](https://ollama.com/library)"
     "[View the source code](https://github.com/streamlit/llm-examples/blob/main/Chatbot.py)"
